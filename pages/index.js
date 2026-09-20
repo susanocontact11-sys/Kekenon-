@@ -5,7 +5,8 @@ const MAX_PLAUSIBLE_SPEED_KMH = 70;
 const MIN_ACCURACY_M = 35;
 const GPS_FIX_TIMEOUT_MS = 8000;
 const WHATSAPP_NUMBER = '2290197537050';
-const APP_VERSION = '1.0.0'; // à incrémenter à chaque nouvel APK
+const APP_VERSION = '1.0.0';
+const PENDING_KEY = 'keke_pending_courses';
 
 const MOMO_NUMBER = '2290197537050';
 const CELTIIS_NUMBER = '2290193517846';
@@ -29,6 +30,12 @@ function weekKey(date) {
   d.setDate(d.getDate() - day);
   return d.toISOString().slice(0,10);
 }
+function loadPending() {
+  try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch { return []; }
+}
+function savePending(arr) {
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(arr)); } catch {}
+}
 
 export default function Home() {
   const [driver, setDriver] = useState(null);
@@ -41,6 +48,7 @@ export default function Home() {
   const [settings, setSettings] = useState({ rate_fcfa_per_km: 65, subscription_fee: 100 });
   const [courses, setCourses] = useState([]);
   const [lastPaidAt, setLastPaidAt] = useState(null);
+  const [pending, setPending] = useState([]);
 
   const [tracking, setTracking] = useState(false);
   const [distanceKm, setDistanceKm] = useState(0);
@@ -50,7 +58,6 @@ export default function Home() {
   const [showManual, setShowManual] = useState(false);
   const [manualDist, setManualDist] = useState('');
   const [receipt, setReceipt] = useState(null);
-  const [saveError, setSaveError] = useState(null);
 
   const watchIdRef = useRef(null);
   const pointsRef = useRef([]);
@@ -58,24 +65,62 @@ export default function Home() {
   const timerRef = useRef(null);
   const gpsFailTimeoutRef = useRef(null);
   const hasFixRef = useRef(false);
+  const pendingRef = useRef([]);
+  const driverRef = useRef(null);
+
+  function updatePending(arr) {
+    pendingRef.current = arr;
+    setPending(arr);
+    savePending(arr);
+  }
 
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase.from('drivers').select('*').eq('auth_id', user.id).maybeSingle();
-        if (data) setDriver(data);
+        if (data) { setDriver(data); driverRef.current = data; }
       }
       const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
       if (s) setSettings(s);
       setUpdateAvailable(s && s.app_version !== APP_VERSION);
+      const p = loadPending();
+      pendingRef.current = p;
+      setPending(p);
       setLoading(false);
     })();
   }, []);
 
   useEffect(() => {
-    if (driver) { loadCourses(); loadLastPayment(); }
+    if (driver) { loadCourses(); loadLastPayment(); syncPending(); }
   }, [driver]);
+
+  useEffect(() => {
+    function handleOnline() { syncPending(); }
+    window.addEventListener('online', handleOnline);
+    const interval = setInterval(() => { if (pendingRef.current.length > 0) syncPending(); }, 20000);
+    return () => { window.removeEventListener('online', handleOnline); clearInterval(interval); };
+  }, []);
+
+  async function syncPending() {
+    const list = pendingRef.current;
+    if (!list.length || !driverRef.current) return;
+    const stillPending = [];
+    let anySynced = false;
+    for (const item of list) {
+      const { error } = await supabase.from('courses').insert({
+        driver_id: item.driver_id,
+        course_number: item.course_number,
+        distance_km: item.distance_km,
+        duration_sec: item.duration_sec,
+        price: item.price
+      });
+      if (error) stillPending.push(item);
+      else anySynced = true;
+    }
+    updatePending(stillPending);
+    if (anySynced) loadCourses();
+  }
 
   async function loadCourses() {
     const { data } = await supabase.from('courses').select('*').eq('driver_id', driver.id).order('created_at', { ascending: false });
@@ -95,6 +140,7 @@ export default function Home() {
     try {
       const d = await getOrCreateDriver(nameInput.trim(), phoneInput.trim());
       setDriver(d);
+      driverRef.current = d;
     } catch (e) {
       setRegError("Ce numéro est déjà utilisé, ou une erreur s'est produite.");
     }
@@ -133,7 +179,6 @@ export default function Home() {
   function startTracking() {
     if (!navigator.geolocation) { setShowManual(true); setGpsState('bad'); setGpsText('GPS non supporté'); return; }
     setReceipt(null);
-    setSaveError(null);
     setTracking(true);
     pointsRef.current = [];
     setDistanceKm(0); setDurationSec(0);
@@ -160,21 +205,18 @@ export default function Home() {
     const price = Math.round(finalDistance * settings.rate_fcfa_per_km);
 
     if (finalDistance > 0) {
-      const nextNumber = courses.length + 1;
-      const { error } = await supabase.from('courses').insert({
+      const nextNumber = courses.length + pendingRef.current.length + 1;
+      const item = {
+        tempId: Date.now(),
         driver_id: driver.id,
         course_number: nextNumber,
         distance_km: Number(finalDistance.toFixed(2)),
         duration_sec: finalDuration,
         price
-      });
-      if (error) {
-        setSaveError(error.message);
-      } else {
-        setSaveError(null);
-        await loadCourses();
-        setReceipt({ distanceKm: finalDistance, price, durationSec: finalDuration });
-      }
+      };
+      updatePending([...pendingRef.current, item]);
+      setReceipt({ distanceKm: finalDistance, price, durationSec: finalDuration });
+      syncPending();
     }
 
     setGpsState(null); setGpsText('GPS inactif'); setShowManual(false);
@@ -182,9 +224,7 @@ export default function Home() {
     startTimeRef.current = null;
   }
 
-  function dismissReceipt() {
-    setReceipt(null);
-  }
+  function dismissReceipt() { setReceipt(null); }
 
   function confirmManualDistance() {
     const val = parseFloat(manualDist);
@@ -224,9 +264,13 @@ export default function Home() {
   const currentPrice = Math.round(distanceKm * settings.rate_fcfa_per_km);
   const today = new Date().toISOString().slice(0,10);
   const thisWeek = weekKey(new Date());
+  const allCourses = [
+    ...pending.map(p => ({ ...p, created_at: new Date(p.tempId).toISOString(), pending: true, id: 'p'+p.tempId })),
+    ...courses
+  ];
   let sumToday = 0, sumWeek = 0;
   const byDay = {};
-  courses.forEach(c => {
+  allCourses.forEach(c => {
     const d = c.created_at.slice(0,10);
     if (d === today) sumToday += c.price;
     if (weekKey(c.created_at) === thisWeek) sumWeek += c.price;
@@ -257,9 +301,7 @@ export default function Home() {
             {paymentDue && (
               <div className="week-banner-full">
                 <div className="txt">Abonnement dû : <b>{settings.subscription_fee} FCFA</b></div>
-                <div className="pay-instructions">
-                  Nom à vérifier avant envoi : <b>{PAYEE_NAME}</b>
-                </div>
+                <div className="pay-instructions">Nom à vérifier avant envoi : <b>{PAYEE_NAME}</b></div>
                 <div style={{display:'flex', gap:8, marginTop:8}}>
                   <div style={{flex:1}}>
                     <div className="pay-instructions">MoMo : <b>{MOMO_NUMBER}</b></div>
@@ -273,9 +315,15 @@ export default function Home() {
               </div>
             )}
 
+            {pending.length > 0 && (
+              <div className="week-banner">
+                <div className="txt">{pending.length} course(s) en attente de synchronisation</div>
+              </div>
+            )}
+
             <div className="meter">
               <div className="label">{tracking ? 'Course en cours' : 'Prêt'}</div>
-              <div className="course-n">Course n°{courses.length + 1}</div>
+              <div className="course-n">Course n°{courses.length + pending.length + 1}</div>
               <div className="price"><span>{currentPrice}</span><span className="unit">FCFA</span></div>
               <div className="sub">
                 <div>Distance <b>{distanceKm.toFixed(2)}</b> km</div>
@@ -283,12 +331,6 @@ export default function Home() {
               </div>
               <div className="gps-flag"><div className={'gps-dot' + (gpsState ? ' '+gpsState : '')}></div><span>{gpsText}</span></div>
             </div>
-
-            {saveError && (
-              <div className="manual-fallback">
-                Erreur d'enregistrement : {saveError}
-              </div>
-            )}
 
             {receipt && !tracking && (
               <div className="manual-fallback" style={{borderStyle:'solid', textAlign:'center'}}>
@@ -320,16 +362,16 @@ export default function Home() {
             <div className="hist-summary">
               <div className="hist-card"><div className="n">{sumToday}</div><div className="l">FCFA aujourd'hui</div></div>
               <div className="hist-card"><div className="n">{sumWeek}</div><div className="l">FCFA cette semaine</div></div>
-              <div className="hist-card"><div className="n">{courses.length}</div><div className="l">courses total</div></div>
+              <div className="hist-card"><div className="n">{allCourses.length}</div><div className="l">courses total</div></div>
             </div>
-            {courses.length === 0 ? (
+            {allCourses.length === 0 ? (
               <div className="empty">Aucune course enregistrée pour l'instant.</div>
             ) : Object.keys(byDay).sort().reverse().map(day => (
               <div className="day-group" key={day}>
                 <h3>{day === today ? "Aujourd'hui" : new Date(day).toLocaleDateString('fr-FR', {weekday:'long', day:'numeric', month:'long'})}</h3>
                 {byDay[day].map(c => (
                   <div className="course-row" key={c.id}>
-                    <span className="t">{new Date(c.created_at).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}</span>
+                    <span className="t">{new Date(c.created_at).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}{c.pending ? ' ⏳' : ''}</span>
                     <span><span className="p">{c.price} F</span><span className="d">· {c.distance_km} km</span></span>
                   </div>
                 ))}
@@ -347,4 +389,4 @@ export default function Home() {
       </main>
     </div>
   );
-      }
+}

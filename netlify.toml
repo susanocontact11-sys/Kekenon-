@@ -1,5 +1,5 @@
 [build]
   command = "npm run build"
 
-[secrets_scanning]
-  omit_keys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_URL"]
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "SUPABASE_URL,NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY"

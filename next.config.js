@@ -2,9 +2,15 @@
 const nextConfig = {
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      config.resolve.fallback = { ...config.resolve.fallback, fs: false };
+      const externals = Array.isArray(config.externals) ? config.externals : [];
+      config.externals = [
+        ...externals,
+        {
+          '@capacitor-community/background-geolocation':
+            'commonjs @capacitor-community/background-geolocation',
+        },
+      ];
     }
-    config.externals = [...(config.externals || []), '@capacitor-community/background-geolocation'];
     return config;
   },
 };

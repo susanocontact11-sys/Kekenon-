@@ -73,3 +73,19 @@ main { flex: 1; padding: 24px 20px 40px; }
 
 .contact-box { text-align: center; padding-top: 40px; }
 .contact-box a { display: inline-block; margin-top: 20px; background: #3C7A6B; color: #F5F0E6; text-decoration: none; padding: 16px 28px; border-radius: 14px; font-weight: 700; }
+
+.week-banner-full {
+  background: rgba(245,240,230,0.06);
+  border: 1px solid rgba(245,240,230,0.1);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+.week-banner-full .txt { font-size: 13px; color: rgba(245,240,230,0.6); margin-bottom: 8px; }
+.week-banner-full .txt b { color: #F5F0E6; }
+.pay-instructions { font-size: 12px; color: rgba(245,240,230,0.5); margin-bottom: 6px; }
+.pay-instructions b { color: #F5F0E6; }
+.pay-btn {
+  display: block; text-align: center; background: #3C7A6B; color: #F5F0E6;
+  text-decoration: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600;
+}

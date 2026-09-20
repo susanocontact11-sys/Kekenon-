@@ -76,27 +76,7 @@ export default function Home() {
     savePending(arr);
   }
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data } = await supabase.from('drivers').select('*').eq('auth_id', user.id).maybeSingle();
-          if (data) { setDriver(data); driverRef.current = data; }
-        }
-        const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
-        if (s) setSettings(s);
-        setUpdateAvailable(s && s.app_version !== APP_VERSION);
-        const p = loadPending();
-        pendingRef.current = p;
-        setPending(p);
-      } catch (e) {
-        setInitError(e.message || String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  
 
   useEffect(() => {
     if (driver) { loadCourses(); loadLastPayment(); syncPending(); }
@@ -135,7 +115,15 @@ export default function Home() {
   }
   async function loadLastPayment() {
     const { data } = await supabase.from('payments').select('paid_at').eq('driver_id', driver.id).order('paid_at', { ascending: false }).limit(1).maybeSingle();
-    setLastPaidAt(data ? data.paid_at : null);
+    setLastPaidAt(data ? useEffect(() => {
+  const t = setTimeout(() => {
+    setLoading((l) => {
+      if (l) setInitError('Délai dépassé — le chargement a pris trop de temps.');
+      return false;
+    });
+  }, 10000);
+  return () => clearTimeout(t);
+}, []);data.paid_at : null);
   }
 
   async function handleRegister() {

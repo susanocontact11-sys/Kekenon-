@@ -1,6 +1,6 @@
-import { startGeo } from '../lib/nativeGeo';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, getOrCreateDriver } from '../lib/supabase';
+import { startGeo } from '../lib/nativeGeo';
 
 const MAX_PLAUSIBLE_SPEED_KMH = 70;
 const MIN_ACCURACY_M = 35;
@@ -41,6 +41,7 @@ function savePending(arr) {
 export default function Home() {
   const [driver, setDriver] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState(null);
   const [nameInput, setNameInput] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [regError, setRegError] = useState('');
@@ -77,18 +78,23 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase.from('drivers').select('*').eq('auth_id', user.id).maybeSingle();
-        if (data) { setDriver(data); driverRef.current = data; }
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase.from('drivers').select('*').eq('auth_id', user.id).maybeSingle();
+          if (data) { setDriver(data); driverRef.current = data; }
+        }
+        const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
+        if (s) setSettings(s);
+        setUpdateAvailable(s && s.app_version !== APP_VERSION);
+        const p = loadPending();
+        pendingRef.current = p;
+        setPending(p);
+      } catch (e) {
+        setInitError(e.message || String(e));
+      } finally {
+        setLoading(false);
       }
-      const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
-      if (s) setSettings(s);
-      setUpdateAvailable(s && s.app_version !== APP_VERSION);
-      const p = loadPending();
-      pendingRef.current = p;
-      setPending(p);
-      setLoading(false);
     })();
   }, []);
 
@@ -178,29 +184,28 @@ export default function Home() {
   }
 
   async function startTracking() {
-  setReceipt(null);
-  setTracking(true);
-  pointsRef.current = [];
-  setDistanceKm(0); setDurationSec(0);
-  startTimeRef.current = Date.now();
-  hasFixRef.current = false;
-  setGpsState(null); setGpsText('Recherche du signal…');
+    setReceipt(null);
+    setTracking(true);
+    pointsRef.current = [];
+    setDistanceKm(0); setDurationSec(0);
+    startTimeRef.current = Date.now();
+    hasFixRef.current = false;
+    setGpsState(null); setGpsText('Recherche du signal…');
 
-  stopGeoRef.current = await startGeo(
-    (pos) => onPosition({ coords: pos.coords }),
-    () => { setGpsState('bad'); setGpsText('Signal indisponible'); }
-  );
+    stopGeoRef.current = await startGeo(
+      (pos) => onPosition({ coords: pos.coords }),
+      () => { setGpsState('bad'); setGpsText('Signal indisponible'); }
+    );
 
-  gpsFailTimeoutRef.current = setTimeout(() => { if (!hasFixRef.current) setShowManual(true); }, GPS_FIX_TIMEOUT_MS);
-  timerRef.current = setInterval(updateMeter, 1000);
+    gpsFailTimeoutRef.current = setTimeout(() => { if (!hasFixRef.current) setShowManual(true); }, GPS_FIX_TIMEOUT_MS);
+    timerRef.current = setInterval(updateMeter, 1000);
   }
 
   async function stopTracking() {
-  setTracking(false);
-  if (stopGeoRef.current) stopGeoRef.current();
-  clearInterval(timerRef.current);
-  clearTimeout(gpsFailTimeoutRef.current);
-  // ... le reste de la fonction ne change pas, garde tout ce qui suit tel quel
+    setTracking(false);
+    if (stopGeoRef.current) stopGeoRef.current();
+    clearInterval(timerRef.current);
+    clearTimeout(gpsFailTimeoutRef.current);
 
     const finalDistance = distanceKm;
     const finalDuration = startTimeRef.current ? Math.round((Date.now() - startTimeRef.current)/1000) : 0;
@@ -245,6 +250,7 @@ export default function Home() {
   const paymentDue = daysSince >= 10;
 
   if (loading) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80}}>Chargement…</p></main></div>;
+  if (initError) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80, color:'#E88'}}>Erreur : {initError}</p></main></div>;
 
   if (!driver) {
     return (
@@ -391,4 +397,4 @@ export default function Home() {
       </main>
     </div>
   );
-}
+  }

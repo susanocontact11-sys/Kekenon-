@@ -26,8 +26,8 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Installer le SDK Android
-        uses: android-actions/setup-android@v3
+      - name: Accepter les licences Android SDK
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Synchroniser le projet Capacitor
         run: npx cap sync android
@@ -39,5 +39,5 @@ jobs:
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: keke-apk
+          name: keke_compteur-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk

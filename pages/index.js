@@ -1,3 +1,4 @@
+import { startGeo } from '../lib/nativeGeo';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase, getOrCreateDriver } from '../lib/supabase';
 
@@ -59,7 +60,7 @@ export default function Home() {
   const [manualDist, setManualDist] = useState('');
   const [receipt, setReceipt] = useState(null);
 
-  const watchIdRef = useRef(null);
+  const stopGeoRef = useRef(null);
   const pointsRef = useRef([]);
   const startTimeRef = useRef(null);
   const timerRef = useRef(null);
@@ -176,29 +177,30 @@ export default function Home() {
     setGpsState('ok'); setGpsText('GPS actif');
   }
 
-  function startTracking() {
-    if (!navigator.geolocation) { setShowManual(true); setGpsState('bad'); setGpsText('GPS non supporté'); return; }
-    setReceipt(null);
-    setTracking(true);
-    pointsRef.current = [];
-    setDistanceKm(0); setDurationSec(0);
-    startTimeRef.current = Date.now();
-    hasFixRef.current = false;
-    setGpsState(null); setGpsText('Recherche du signal…');
+  async function startTracking() {
+  setReceipt(null);
+  setTracking(true);
+  pointsRef.current = [];
+  setDistanceKm(0); setDurationSec(0);
+  startTimeRef.current = Date.now();
+  hasFixRef.current = false;
+  setGpsState(null); setGpsText('Recherche du signal…');
 
-    watchIdRef.current = navigator.geolocation.watchPosition(onPosition, () => {
-      setGpsState('bad'); setGpsText('Signal indisponible');
-    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 6000 });
+  stopGeoRef.current = await startGeo(
+    (pos) => onPosition({ coords: pos.coords }),
+    () => { setGpsState('bad'); setGpsText('Signal indisponible'); }
+  );
 
-    gpsFailTimeoutRef.current = setTimeout(() => { if (!hasFixRef.current) setShowManual(true); }, GPS_FIX_TIMEOUT_MS);
-    timerRef.current = setInterval(updateMeter, 1000);
+  gpsFailTimeoutRef.current = setTimeout(() => { if (!hasFixRef.current) setShowManual(true); }, GPS_FIX_TIMEOUT_MS);
+  timerRef.current = setInterval(updateMeter, 1000);
   }
 
   async function stopTracking() {
-    setTracking(false);
-    if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-    clearInterval(timerRef.current);
-    clearTimeout(gpsFailTimeoutRef.current);
+  setTracking(false);
+  if (stopGeoRef.current) stopGeoRef.current();
+  clearInterval(timerRef.current);
+  clearTimeout(gpsFailTimeoutRef.current);
+  // ... le reste de la fonction ne change pas, garde tout ce qui suit tel quel
 
     const finalDistance = distanceKm;
     const finalDuration = startTimeRef.current ? Math.round((Date.now() - startTimeRef.current)/1000) : 0;
@@ -249,7 +251,7 @@ export default function Home() {
       <div id="app">
         <main>
           <div className="reg-box">
-            <h1>Kèkè</h1>
+            <h1>Kèkè compteur</h1>
             <p>Compteur de course pour zem. Entre tes infos pour commencer.</p>
             <input placeholder="Ton nom" value={nameInput} onChange={e => setNameInput(e.target.value)} />
             <input placeholder="Ton numéro" value={phoneInput} onChange={e => setPhoneInput(e.target.value)} />

@@ -4,12 +4,12 @@ import { supabase, getOrCreateDriver } from '../lib/supabase';
 const MAX_PLAUSIBLE_SPEED_KMH = 70;
 const MIN_ACCURACY_M = 35;
 const GPS_FIX_TIMEOUT_MS = 8000;
-const WHATSAPP_NUMBER = '2290197537050'; // à remplacer
+const WHATSAPP_NUMBER = '2290197537050';
 const APP_VERSION = '1.0.0'; // à incrémenter à chaque nouvel APK
 
-const MOMO_NUMBER = '2290197537050';   // ton numéro MTN
-const CELTIIS_NUMBER = '2290193517846'; // ton numéro Celtiis
-const PAYEE_NAME = 'DEGBOGBAHOUN Hinvo'; // le nom enregistré sur les deux comptes
+const MOMO_NUMBER = '2290197537050';
+const CELTIIS_NUMBER = '2290193517846';
+const PAYEE_NAME = 'DEGBOGBAHOUN Hinvo';
 
 function haversineKm(a, b) {
   const R = 6371;
@@ -49,6 +49,8 @@ export default function Home() {
   const [gpsText, setGpsText] = useState('GPS inactif');
   const [showManual, setShowManual] = useState(false);
   const [manualDist, setManualDist] = useState('');
+  const [receipt, setReceipt] = useState(null);
+  const [saveError, setSaveError] = useState(null);
 
   const watchIdRef = useRef(null);
   const pointsRef = useRef([]);
@@ -57,7 +59,6 @@ export default function Home() {
   const gpsFailTimeoutRef = useRef(null);
   const hasFixRef = useRef(false);
 
-  // ---- init : driver existant ou formulaire d'inscription ----
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -99,7 +100,6 @@ export default function Home() {
     }
   }
 
-  // ---- suivi GPS ----
   const updateMeter = useCallback(() => {
     if (startTimeRef.current) setDurationSec(Math.floor((Date.now() - startTimeRef.current)/1000));
   }, []);
@@ -132,6 +132,8 @@ export default function Home() {
 
   function startTracking() {
     if (!navigator.geolocation) { setShowManual(true); setGpsState('bad'); setGpsText('GPS non supporté'); return; }
+    setReceipt(null);
+    setSaveError(null);
     setTracking(true);
     pointsRef.current = [];
     setDistanceKm(0); setDurationSec(0);
@@ -159,18 +161,29 @@ export default function Home() {
 
     if (finalDistance > 0) {
       const nextNumber = courses.length + 1;
-      await supabase.from('courses').insert({
+      const { error } = await supabase.from('courses').insert({
         driver_id: driver.id,
         course_number: nextNumber,
         distance_km: Number(finalDistance.toFixed(2)),
         duration_sec: finalDuration,
         price
       });
-      await loadCourses();
+      if (error) {
+        setSaveError(error.message);
+      } else {
+        setSaveError(null);
+        await loadCourses();
+        setReceipt({ distanceKm: finalDistance, price, durationSec: finalDuration });
+      }
     }
+
     setGpsState(null); setGpsText('GPS inactif'); setShowManual(false);
     pointsRef.current = []; setDistanceKm(0); setDurationSec(0);
     startTimeRef.current = null;
+  }
+
+  function dismissReceipt() {
+    setReceipt(null);
   }
 
   function confirmManualDistance() {
@@ -181,7 +194,6 @@ export default function Home() {
     setGpsState('ok'); setGpsText('Distance saisie manuellement');
   }
 
-  // ---- rappel abonnement (10 jours) ----
   function daysSinceReference() {
     const ref = lastPaidAt || driver?.created_at;
     if (!ref) return 0;
@@ -190,7 +202,6 @@ export default function Home() {
   const daysSince = driver ? daysSinceReference() : 0;
   const paymentDue = daysSince >= 10;
 
-  // ---- rendu ----
   if (loading) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80}}>Chargement…</p></main></div>;
 
   if (!driver) {
@@ -273,6 +284,21 @@ export default function Home() {
               <div className="gps-flag"><div className={'gps-dot' + (gpsState ? ' '+gpsState : '')}></div><span>{gpsText}</span></div>
             </div>
 
+            {saveError && (
+              <div className="manual-fallback">
+                Erreur d'enregistrement : {saveError}
+              </div>
+            )}
+
+            {receipt && !tracking && (
+              <div className="manual-fallback" style={{borderStyle:'solid', textAlign:'center'}}>
+                <div style={{fontSize:15, fontWeight:700, color:'#F5F0E6', marginBottom:6}}>Course terminée</div>
+                <div>Distance : <b>{receipt.distanceKm.toFixed(2)} km</b></div>
+                <div>Prix : <b>{receipt.price} FCFA</b></div>
+                <button onClick={dismissReceipt}>Nouvelle course</button>
+              </div>
+            )}
+
             <button className={'big-btn ' + (tracking ? 'stop' : 'start')} onClick={() => tracking ? stopTracking() : startTracking()}>
               {tracking ? 'Fin' : 'Début'}
             </button>
@@ -321,4 +347,4 @@ export default function Home() {
       </main>
     </div>
   );
-                                                                     }
+      }

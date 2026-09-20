@@ -4,7 +4,12 @@ import { supabase, getOrCreateDriver } from '../lib/supabase';
 const MAX_PLAUSIBLE_SPEED_KMH = 70;
 const MIN_ACCURACY_M = 35;
 const GPS_FIX_TIMEOUT_MS = 8000;
-const WHATSAPP_NUMBER = '229XXXXXXXX'; // à remplacer
+const WHATSAPP_NUMBER = '2290197537050'; // à remplacer
+const APP_VERSION = '1.0.0'; // à incrémenter à chaque nouvel APK
+
+const MOMO_NUMBER = '2290197537050';   // ton numéro MTN
+const CELTIIS_NUMBER = '2290193517846'; // ton numéro Celtiis
+const PAYEE_NAME = 'DEGBOGBAHOUN Hinvo'; // le nom enregistré sur les deux comptes
 
 function haversineKm(a, b) {
   const R = 6371;
@@ -32,7 +37,8 @@ export default function Home() {
   const [phoneInput, setPhoneInput] = useState('');
   const [regError, setRegError] = useState('');
   const [tab, setTab] = useState('course');
-  const [settings, setSettings] = useState({ rate_fcfa_per_km: 70, subscription_fee: 200 });
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [settings, setSettings] = useState({ rate_fcfa_per_km: 65, subscription_fee: 100 });
   const [courses, setCourses] = useState([]);
   const [lastPaidAt, setLastPaidAt] = useState(null);
 
@@ -61,6 +67,7 @@ export default function Home() {
       }
       const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
       if (s) setSettings(s);
+      setUpdateAvailable(s && s.app_version !== APP_VERSION);
       setLoading(false);
     })();
   }, []);
@@ -229,16 +236,31 @@ export default function Home() {
       <main>
         {tab === 'course' && (
           <>
+            {updateAvailable && (
+              <div className="week-banner">
+                <div className="txt">Nouvelle version disponible</div>
+                <a href={settings.apk_url} className="pay-btn">Mettre à jour</a>
+              </div>
+            )}
+
             {paymentDue && (
-  <div className="week-banner-full">
-    <div className="txt">Abonnement dû : <b>{settings.subscription_fee} FCFA</b></div>
-    <div className="pay-instructions">
-      Envoie ce montant par MoMo au <b>229 01 97 53 70 50</b><br/>
-      (nom enregistré : <b>DEGBOGAHOUN Hinvo</b>)
-    </div>
-    <a href="tel:*880%23" className="pay-btn">Ouvrir MoMo</a>
-  </div>
-)}
+              <div className="week-banner-full">
+                <div className="txt">Abonnement dû : <b>{settings.subscription_fee} FCFA</b></div>
+                <div className="pay-instructions">
+                  Nom à vérifier avant envoi : <b>{PAYEE_NAME}</b>
+                </div>
+                <div style={{display:'flex', gap:8, marginTop:8}}>
+                  <div style={{flex:1}}>
+                    <div className="pay-instructions">MoMo : <b>{MOMO_NUMBER}</b></div>
+                    <a href="tel:*880%23" className="pay-btn">Payer via MoMo</a>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div className="pay-instructions">Celtiis : <b>{CELTIIS_NUMBER}</b></div>
+                    <a href="tel:*889%23" className="pay-btn">Payer via Celtiis</a>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="meter">
               <div className="label">{tracking ? 'Course en cours' : 'Prêt'}</div>
@@ -299,4 +321,4 @@ export default function Home() {
       </main>
     </div>
   );
-    }
+                                                                     }

@@ -42,6 +42,7 @@ export default function Home() {
   const [driver, setDriver] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initError, setInitError] = useState(null);
+  const [initStep, setInitStep] = useState('Démarrage…');
   const [nameInput, setNameInput] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [regError, setRegError] = useState('');
@@ -76,7 +77,46 @@ export default function Home() {
     savePending(arr);
   }
 
-  
+  useEffect(() => {
+    const timeoutGuard = setTimeout(() => {
+      setLoading((l) => {
+        if (l) setInitError('Délai dépassé pendant : ' + initStep);
+        return false;
+      });
+    }, 10000);
+
+    (async () => {
+      try {
+        setInitStep('Vérification de la session…');
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          setInitStep('Recherche du chauffeur…');
+          const { data } = await supabase.from('drivers').select('*').eq('auth_id', user.id).maybeSingle();
+          if (data) { setDriver(data); driverRef.current = data; }
+        }
+
+        setInitStep('Chargement des réglages…');
+        const { data: s } = await supabase.from('settings').select('*').eq('id', 1).single();
+        if (s) setSettings(s);
+        setUpdateAvailable(s && s.app_version !== APP_VERSION);
+
+        setInitStep('Chargement local…');
+        const p = loadPending();
+        pendingRef.current = p;
+        setPending(p);
+
+        clearTimeout(timeoutGuard);
+        setLoading(false);
+      } catch (e) {
+        clearTimeout(timeoutGuard);
+        setInitError((e && e.message) || String(e));
+        setLoading(false);
+      }
+    })();
+
+    return () => clearTimeout(timeoutGuard);
+  }, []);
 
   useEffect(() => {
     if (driver) { loadCourses(); loadLastPayment(); syncPending(); }
@@ -115,15 +155,7 @@ export default function Home() {
   }
   async function loadLastPayment() {
     const { data } = await supabase.from('payments').select('paid_at').eq('driver_id', driver.id).order('paid_at', { ascending: false }).limit(1).maybeSingle();
-    setLastPaidAt(data ? useEffect(() => {
-  const t = setTimeout(() => {
-    setLoading((l) => {
-      if (l) setInitError('Délai dépassé — le chargement a pris trop de temps.');
-      return false;
-    });
-  }, 10000);
-  return () => clearTimeout(t);
-}, []);data.paid_at : null);
+    setLastPaidAt(data ? data.paid_at : null);
   }
 
   async function handleRegister() {
@@ -237,7 +269,7 @@ export default function Home() {
   const daysSince = driver ? daysSinceReference() : 0;
   const paymentDue = daysSince >= 10;
 
-  if (loading) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80}}>Chargement…</p></main></div>;
+  if (loading) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80}}>{initStep}</p></main></div>;
   if (initError) return <div id="app"><main><p style={{textAlign:'center', paddingTop: 80, color:'#E88'}}>Erreur : {initError}</p></main></div>;
 
   if (!driver) {
@@ -385,4 +417,4 @@ export default function Home() {
       </main>
     </div>
   );
-  }
+        }

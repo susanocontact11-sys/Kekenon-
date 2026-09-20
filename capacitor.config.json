@@ -1,7 +1,7 @@
 {
   "appId": "app.kekecompteur.zem",
   "appName": "Kèkè-compteur",
-  "webDir": "public",
+  "webDir": "capacitor-web",
   "server": {
     "url": "https://resilient-lolly-4a1db8.netlify.app",
     "cleartext": false

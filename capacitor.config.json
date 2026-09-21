@@ -3,7 +3,7 @@
   "appName": "Kèkè-compteur",
   "webDir": "capacitor-web",
   "server": {
-    "url": "https://resilient-lolly-4a1db8.netlify.app",
+    "url": "kekenon.vercel.app",
     "cleartext": false
   }
 }

@@ -70,6 +70,8 @@ export default function Home() {
   const hasFixRef = useRef(false);
   const pendingRef = useRef([]);
   const driverRef = useRef(null);
+  const cancelledRef = useRef(false);
+  const manualLockRef = useRef(false);
 
   function updatePending(arr) {
     pendingRef.current = arr;
@@ -178,6 +180,7 @@ export default function Home() {
   }, []);
 
   function onPosition(pos) {
+    if (manualLockRef.current) return;
     hasFixRef.current = true;
     clearTimeout(gpsFailTimeoutRef.current);
     setShowManual(false);
@@ -210,18 +213,30 @@ export default function Home() {
     setDistanceKm(0); setDurationSec(0);
     startTimeRef.current = Date.now();
     hasFixRef.current = false;
+    cancelledRef.current = false;
+    manualLockRef.current = false;
     setGpsState(null); setGpsText('Recherche du signal…');
 
-    stopGeoRef.current = await startGeo(
-      (pos) => onPosition({ coords: pos.coords }),
-      () => { setGpsState('bad'); setGpsText('Signal indisponible'); }
-    );
-
-    gpsFailTimeoutRef.current = setTimeout(() => { if (!hasFixRef.current) setShowManual(true); }, GPS_FIX_TIMEOUT_MS);
     timerRef.current = setInterval(updateMeter, 1000);
+    gpsFailTimeoutRef.current = setTimeout(() => {
+      if (!hasFixRef.current) { setShowManual(true); manualLockRef.current = true; }
+    }, GPS_FIX_TIMEOUT_MS);
+
+    try {
+      const stopFn = await startGeo(
+        (pos) => onPosition({ coords: pos.coords }),
+        () => { setGpsState('bad'); setGpsText('Signal indisponible'); }
+      );
+      if (cancelledRef.current) { stopFn(); return; }
+      stopGeoRef.current = stopFn;
+    } catch (e) {
+      setGpsState('bad');
+      setGpsText('Échec GPS : ' + (e.message || String(e)));
+    }
   }
 
   async function stopTracking() {
+    cancelledRef.current = true;
     setTracking(false);
     if (stopGeoRef.current) stopGeoRef.current();
     clearInterval(timerRef.current);
@@ -417,4 +432,4 @@ export default function Home() {
       </main>
     </div>
   );
-        }
+    }

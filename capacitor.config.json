@@ -3,7 +3,7 @@
   "appName": "Kèkè-compteur",
   "webDir": "capacitor-web",
   "server": {
-    "url": "kekenon.vercel.app",
+    "url": "https://kekenon.vercel.app",
     "cleartext": false
   }
 }
